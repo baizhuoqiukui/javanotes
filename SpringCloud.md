@@ -64,13 +64,13 @@
 
 1.服务注册好的信息提交到Eureka,两台服务器互相作为对方的客户端，互相拉取
 
-![image-20201125101206593](Eureka.assets/image-20201125101206593.png)
+![image-20201125101206593](SpringCloud.assets/image-20201125101206593.png)
 
 
 
 2. 两个服务器没有依赖关系，服务需要分别到两个服务器去注册
 
-![image-20201125101449685](Eureka.assets/image-20201125101449685.png)
+![image-20201125101449685](SpringCloud.assets/image-20201125101449685.png)
 
 缺点：获取服务列表时，需要向每台服务器去获取信息
 
@@ -125,7 +125,7 @@ server.port=7002
 
 成功界面
 
-![image-20201125112428562](Eureka.assets/image-20201125112428562.png)
+![image-20201125112428562](SpringCloud.assets/image-20201125112428562.png)
 
 ## Eureka原理
 
@@ -320,7 +320,7 @@ eureka.instance.metadata-map.dalao=mashibing
 
 #### 服务端：
 
-![image-20200408150307456](Eureka.assets/image-20200408150307456.png)
+![image-20200408150307456](SpringCloud.assets/image-20200408150307456.png)
 
 #### 客户端：
 
@@ -481,7 +481,7 @@ eureka.server.enable-self-preservation=false
 
 关闭后会提示
 
-![image-20200408165155886](Eureka.assets/image-20200408165155886.png)
+![image-20200408165155886](SpringCloud.assets/image-20200408165155886.png)
 
 
 
@@ -604,7 +604,7 @@ management.endpoint.shutdown.enabled=true
 
 
 
-![image-20201126154026305](Eureka.assets/image-20201126154026305.png)
+![image-20201126154026305](SpringCloud.assets/image-20201126154026305.png)
 
 ## RestTemplate 
 
@@ -1425,7 +1425,7 @@ feign在方法上可以设置：@RequestMapping,@ResponseBody。
 
 服务端provider配置
 
-```
+```sh
 #服务端开启压缩
 server.compression.enabled=true
 
@@ -1433,7 +1433,7 @@ server.compression.enabled=true
 
 调用方consumer配置
 
-```
+```sh
 #配置请求GZIP压缩
 feign.compression.request.enabled=true
 #配置响应GZIP压缩
@@ -1444,7 +1444,7 @@ feign.compression.request.min-request-size=100
 
 ### 请求
 
-![image-20201202165923709](Eureka.assets/image-20201202165923709.png)
+![image-20201202165923709](SpringCloud.assets/image-20201202165923709.png)
 
 #### API
 
@@ -1977,7 +1977,7 @@ public class WebError implements FallbackFactory<ConsumerApi> {
 
 配置
 
-```
+```sh
 hystrix.command.default.execution.isolation.strategy 隔离策略，默认是Thread, 可选Thread｜Semaphore
 thread 通过线程数量来限制并发请求数，可以提供额外的保护，但有一定的延迟。一般用于网络调用
 semaphore 通过semaphore count来限制并发请求数，适用于无网络的高并发请求
@@ -2002,7 +2002,7 @@ hystrix.command.default.execution.isolation.strategy=SEMAPHORE
 
 启动类
 
-```
+```java
 @EnableHystrixDashboard
 ```
 
@@ -2010,7 +2010,7 @@ hystrix.command.default.execution.isolation.strategy=SEMAPHORE
 
 引入依赖
 
-```
+```xml
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>

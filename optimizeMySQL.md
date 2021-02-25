@@ -1879,6 +1879,38 @@ log_error  指定错误日志文件名称，用于记录当mysqld启动和停止
 
 log_bin  指定二进制日志文件名称，用于记录对数据造成更改的所有查询语句
 
+**binlog的三种模式**
+
+https://www.cnblogs.com/barrywxx/p/11544473.html
+
+**Row Level 行模式**
+
+master中日志记录每一行被修改的的信息，slave对相同的数据进行更改。
+
+优点：日志清晰记录每一行细节
+
+缺点：产生大量日志内容
+
+**Statement Level 默认**
+
+修改数据的sql记录到master的bin-log中，slave同步时执行相同的sql
+
+优点：不用记录每一行数据变化
+
+缺点：只记录sql复制可能会出现问题
+
+**Mixed 混合模式**
+
+根据sql动态切换上述两种模式
+
+**企业场景如何选择binlog的模式**
+
+1、 如果生产中使用MySQL的特殊功能相对少（存储过程、触发器、函数）。选择默认的语句模式，Statement Level。
+
+2、 如果生产中使用MySQL的特殊功能较多的，可以选择Mixed模式。
+
+3、 如果生产中使用MySQL的特殊功能较多，又希望数据最大化一致，此时最好Row level模式；但是要注意，该模式的binlog非常“沉重”。
+
 ![image-20210130125353749](optimizeMySQL.assets/image-20210130125353749.png)
 
 **redo log**

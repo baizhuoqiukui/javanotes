@@ -114,7 +114,7 @@ protected Class<?> loadClass(String name, boolean resolve)
             return c;
         }
     }
-//父类都找不到的情况下，自定义时，自己重写该方法，模板方法、钩子函数
+//父类都找不到的情况下，自定义时，自己重写该方法，模板方法、钩子函数,protected只能子类继承才能重写
 protected Class<?> findClass(String name) throws ClassNotFoundException {
         throw new ClassNotFoundException(name);
     }
@@ -228,6 +228,8 @@ public class T006_MSBClassLoader extends ClassLoader {
 
 Java Memory Model
 
+
+
 ## 硬件层数据一致性
 
 ![image-20210218111323858](JVM.assets/image-20210218111323858.png)
@@ -309,7 +311,7 @@ JVM级别如何规范（JSR133）
 volatile的实现细节
 
 1. 字节码层面
-   ACC_VOLATILE
+   加了ACC_VOLATILE，JVM读取到该关键字
 
 2. JVM层面
    volatile内存区的读写 都加屏障
@@ -328,16 +330,30 @@ volatile的实现细节
 
 3. OS和硬件层面
    https://blog.csdn.net/qq_26222859/article/details/52235930
-   hsdis - HotSpot Dis Assembler
+   hsdis - HotSpot Dis Assembler HotSpot反汇编
    windows lock 指令实现 | MESI实现
 
 synchronized实现细节
 
 1. 字节码层面
+   
+   加在方法上
+   
    ACC_SYNCHRONIZED
-   monitorenter monitorexit
+   
+   加在同步语句块上
+   
+   > monitorenter //开始监视
+   >
+   > 加锁的指令
+   >
+   > monitorexit//退出监视
+   
+   ​	
+   
 2. JVM层面
    C C++ 调用了操作系统提供的同步机制
+
 3. OS和硬件层面
    X86 : lock cmpxchg / xxx
    [https](https://blog.csdn.net/21aspnet/article/details/88571740)[://blog.csdn.net/21aspnet/article/details/](https://blog.csdn.net/21aspnet/article/details/88571740)[88571740](https://blog.csdn.net/21aspnet/article/details/88571740)
@@ -371,11 +387,11 @@ java -XX:+PrintCommandLineFlags -version
 ### 普通对象
 
 1. 对象头：markword  8字节
-2. ClassPointer指针：-XX:+UseCompressedClassPointers 为4字节 不开启为8字节
-3. 实例数据
+2. ClassPointer指针，指向Class对象：-XX:+UseCompressedClassPointers（压缩） 为4字节 不开启为8字节 
+3. 实例数据（成员变量）
    1. 引用类型：-XX:+UseCompressedOops 为4字节 不开启为8字节 
       Oops Ordinary Object Pointers
-4. Padding对齐，8的倍数
+4. Padding对齐，按块读对齐，8的倍数
 
 ### 数组对象
 
@@ -390,6 +406,8 @@ java -XX:+PrintCommandLineFlags -version
 ![image-20210218145123916](JVM.assets/image-20210218145123916.png)
 
 markword中有两位代表是否被锁定syn ，无锁状态时有一位代表是否是偏向锁，25位hashCode
+
+gc标记4位，表示分代年龄
 
 ![image-20210218145504407](JVM.assets/image-20210218145504407.png)
 
@@ -431,6 +449,8 @@ jvms 2.4 2.5
    Hotspot中的Local Variable Table = JVM中的寄存器
 
 ## Runtime Data Area
+
+![image-20210225143949269](JVM.assets/image-20210225143949269.png)
 
 ### PC 程序计数器
 
@@ -476,7 +496,7 @@ Heap
    
 
 2. 字符串常量位于Perm Space
-   FGC不会清理
+   FGC不会清理，容易OOM
    大小启动的时候指定，不能变
 
 3. Meta Space (>=1.8)大于等于1.8版本Method Area的实现
@@ -713,7 +733,7 @@ Eden回收时会一起回收S1或S2，幸存的到另一个S区
 
 ![image-20210219222025472](JVM.assets/image-20210219222025472.png)
 
-#### 5.常见的垃圾回收器（背）
+## 5.常见的垃圾回收器（背）
 
 ![常用垃圾回收器](JVM.assets/常用垃圾回收器.png)
 
@@ -730,40 +750,114 @@ Eden回收时会一起回收S1或S2，幸存的到另一个S区
 
 6. ParallelOld
 
-7. ConcurrentMarkSweep 老年代 并发的， 垃圾回收和应用程序同时运行，降低STW的时间(200ms)
+7. ### ConcurrentMarkSweep 
+
+   老年代 并发的， 垃圾回收和应用程序同时运行，降低STW的时间(200ms)
+
    CMS问题比较多，所以现在没有一个版本默认是CMS，只能手工指定
    CMS既然是MarkSweep，就一定会有碎片化的问题，碎片到达一定程度，CMS的老年代分配对象分配不下的时候，使用SerialOld 进行老年代回收
    想象一下：
    PS + PO -> 加内存 换垃圾回收器 -> PN + CMS + SerialOld（几个小时 - 几天的STW）
    几十个G的内存，单线程回收 -> G1 + FGC 几十个G -> 上T内存的服务器 ZGC
    算法：三色标记 + Incremental Update
+
    
+
+   #### CMS的问题
+
+   1. Memory Fragmentation 内存碎片
+
+      > -XX:+UseCMSCompactAtFullCollection
+      > -XX:CMSFullGCsBeforeCompaction 默认为0 指的是经过多少次FGC才进行压缩
+
+   2. Floating Garbage
+
+      > Concurrent Mode Failure
+      > 产生：if the concurrent collector is unable to finish reclaiming the unreachable objects before the tenured generation fills up, or if an allocation cannot be satisfiedwith the available free space blocks in the tenured generation, then theapplication is paused and the collection is completed with all the applicationthreads stopped
+      >
+      > 解决方案：降低触发CMS的阈值
+      >
+      > PromotionFailed
+      >
+      > 解决方案类似，保持老年代有足够的空间
+      >
+      > –XX:CMSInitiatingOccupancyFraction 92% 可以降低这个值，让CMS保持老年代足够的空间
+
+   #### CMS日志分析
+
+   执行命令：java -Xms20M -Xmx20M -XX:+PrintGCDetails -XX:+UseConcMarkSweepGC com.mashibing.jvm.gc.T15_FullGC_Problem01
+
+   [GC (Allocation Failure) [ParNew: 6144K->640K(6144K), 0.0265885 secs] 6585K->2770K(19840K), 0.0268035 secs] [Times: user=0.02 sys=0.00, real=0.02 secs] 
+
+   > ParNew：年轻代收集器
+   >
+   > 6144->640：收集前后的对比
+   >
+   > （6144）：整个年轻代容量
+   >
+   > 6585 -> 2770：整个堆的情况
+   >
+   > （19840）：整个堆大小
+
+   
+
+   ```java
+   [GC (CMS Initial Mark) [1 CMS-initial-mark: 8511K(13696K)] 9866K(19840K), 0.0040321 secs] [Times: user=0.01 sys=0.00, real=0.00 secs] 
+   	//8511 (13696) : 老年代使用（最大）
+   	//9866 (19840) : 整个堆使用（最大）
+   [CMS-concurrent-mark-start]
+   [CMS-concurrent-mark: 0.018/0.018 secs] [Times: user=0.01 sys=0.00, real=0.02 secs] 
+   	//这里的时间意义不大，因为是并发执行
+   [CMS-concurrent-preclean-start]
+   [CMS-concurrent-preclean: 0.000/0.000 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+   	//标记Card为Dirty，也称为Card Marking
+   [GC (CMS Final Remark) [YG occupancy: 1597 K (6144 K)][Rescan (parallel) , 0.0008396 secs][weak refs processing, 0.0000138 secs][class unloading, 0.0005404 secs][scrub symbol table, 0.0006169 secs][scrub string table, 0.0004903 secs][1 CMS-remark: 8511K(13696K)] 10108K(19840K), 0.0039567 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+   	//STW阶段，YG occupancy:年轻代占用及容量
+   	//[Rescan (parallel)：STW下的存活对象标记
+   	//weak refs processing: 弱引用处理
+   	//class unloading: 卸载用不到的class
+   	//scrub symbol(string) table: 
+   		//cleaning up symbol and string tables which hold class-level metadata and 
+   		//internalized string respectively
+   	//CMS-remark: 8511K(13696K): 阶段过后的老年代占用及容量
+   	//10108K(19840K): 阶段过后的堆占用及容量
+   
+   [CMS-concurrent-sweep-start]
+   [CMS-concurrent-sweep: 0.005/0.005 secs] [Times: user=0.00 sys=0.00, real=0.01 secs] 
+   	//标记已经完成，进行并发清理
+   [CMS-concurrent-reset-start]
+   [CMS-concurrent-reset: 0.000/0.000 secs] [Times: user=0.00 sys=0.00, real=0.00 secs]
+   	//重置内部结构，为下次GC做准备
+   ```
+
+   
+
    CMS几个阶段
-   
+
    ![image-20210219230617311](JVM.assets/image-20210219230617311.png)
-   
+
    1.初始标记
-   
+
    ![image-20210219230137645](JVM.assets/image-20210219230137645.png)
-   
-   只找到根进行标记，STW
-   
+
+   只找到根进行标记，STW，根对象特别少
+
    2.并发标记
-   
+
    ![image-20210219230252567](JVM.assets/image-20210219230252567.png)
-   
+
    运行时进行标记，80%时间消耗
-   
+
    3.重新标记
-   
+
    ![image-20210219230508079](JVM.assets/image-20210219230508079.png)
-   
+
    在并发标记时会新垃圾或者把旧垃圾变成不是垃圾，多数垃圾已经被标记，新产生的不多所以效率高。STW
-   
+
    4.并发清理
-   
+
    会产生浮动垃圾，并发清理的时候产生的垃圾，下次清理
-   
+
 8. G1(10ms)
    算法：三色标记 + SATB
 
@@ -851,7 +945,7 @@ Eden回收时会一起回收S1或S2，幸存的到另一个S区
 
   >1. java -XX:+PrintCommandLineFlags HelloGC 查看程序使用的默认JVM参数
   >2. java -Xmn10M -Xms40M -Xmx60M -XX:+PrintCommandLineFlags -XX:+PrintGC  HelloGC 打印GC
-  >   PrintGCDetails PrintGCTimeStamps PrintGCCauses 详细打印
+  >     PrintGCDetails PrintGCTimeStamps PrintGCCauses 详细打印
   >3. java -XX:+UseConcMarkSweepGC -XX:+PrintCommandLineFlags HelloGC
   >4. java -XX:+PrintFlagsInitial 默认参数值
   >5. java -XX:+PrintFlagsFinal 最终参数值
@@ -971,7 +1065,7 @@ total = eden + 1个survivor
    2. 该进程中的哪个线程cpu高（top -Hp）
    3. 导出该线程的堆栈 (jstack)
    4. 查找哪个方法（栈帧）消耗时间 (jstack)
-   5. 工作线程占比高 | 垃圾回收线程占比高
+   5. 工作线程占比高 | 垃圾回收线程占比高 哪个线程占比比较高
 3. 系统内存飙高，如何查找问题？（面试高频）
    1. 导出堆内存 (jmap)
    2. 分析 (jhat jvisualvm mat jprofiler ... )
@@ -1075,7 +1169,7 @@ total = eden + 1个survivor
    1：已经上线的系统不用图形界面用什么？（cmdline arthas）
    2：图形界面到底用在什么地方？测试！测试的时候进行监控！（压测观察）
 
-10. jmap - histo 4655 | head -20，查找有多少对象产生
+10. jmap - histo 4655 | head -20，查找有多少对象产生（前20），找到最多的几个就是可能出问题的类
 
 11. jmap -dump:format=b,file=xxx pid ：
 
@@ -1086,7 +1180,7 @@ total = eden + 1个survivor
 
 12. java -Xms20M -Xmx20M -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError com.mashibing.jvm.gc.T15_FullGC_Problem01
 
-13. 使用MAT / jhat /jvisualvm 进行dump文件分析
+13. 使用MAT / jhat /Java visualVM 进行dump文件分析
      https://www.cnblogs.com/baihuitestsoftware/articles/6406271.html 
     jhat -J-mx512M xxx.dump
     http://192.168.17.11:7000
@@ -1134,9 +1228,9 @@ total = eden + 1个survivor
 * dashboard 观察系统情况
 * heapdump + jhat分析
 * jad反编译
-  动态代理生成类的问题定位
-  第三方的类（观察代码）
-  版本问题（确定自己最新提交的版本是不是被使用）
+  **动态代理生成类的问题定位**
+  **第三方的类（观察代码）**
+  **版本问题（确定自己最新提交的版本是不是被使用）**
 * redefine 热替换
   目前有些限制条件：只能改方法实现（方法已经运行完成），不能改方法名， 不能改属性
   m() -> mm()
@@ -1147,83 +1241,81 @@ total = eden + 1个survivor
 ### GC算法的基础概念
 
 * Card Table
-  由于做YGC时，需要扫描整个OLD区，效率非常低，所以JVM设计了CardTable， 如果一个OLD区CardTable中有对象指向Y区，就将它设为Dirty，下次扫描时，只需要扫描Dirty Card
+  由于做YGC时，需要扫描整个OLD区（Eden空间不够了要进行YGC，需要看OLD区是否持有Y区的引用，有引用就不回收），效率非常低，所以JVM设计了CardTable， 如果一个OLD区CardTable中有对象指向Y区，就将它设为Dirty，下次扫描时，只需要扫描Dirty Card
   在结构上，Card Table用BitMap来实现
 
-### CMS
+GC触发的时间
 
-#### CMS的问题
+TGC：Eden空间不足、多线程并行执行
 
-1. Memory Fragmentation 内存碎片
+FGC：Old空间不足、System.gc()
 
-   > -XX:+UseCMSCompactAtFullCollection
-   > -XX:CMSFullGCsBeforeCompaction 默认为0 指的是经过多少次FGC才进行压缩
-
-2. Floating Garbage
-
-   > Concurrent Mode Failure
-   > 产生：if the concurrent collector is unable to finish reclaiming the unreachable objects before the tenured generation fills up, or if an allocation cannot be satisfiedwith the available free space blocks in the tenured generation, then theapplication is paused and the collection is completed with all the applicationthreads stopped
-   >
-   > 解决方案：降低触发CMS的阈值
-   >
-   > PromotionFailed
-   >
-   > 解决方案类似，保持老年代有足够的空间
-   >
-   > –XX:CMSInitiatingOccupancyFraction 92% 可以降低这个值，让CMS保持老年代足够的空间
-
-#### CMS日志分析
-
-执行命令：java -Xms20M -Xmx20M -XX:+PrintGCDetails -XX:+UseConcMarkSweepGC com.mashibing.jvm.gc.T15_FullGC_Problem01
-
-[GC (Allocation Failure) [ParNew: 6144K->640K(6144K), 0.0265885 secs] 6585K->2770K(19840K), 0.0268035 secs] [Times: user=0.02 sys=0.00, real=0.02 secs] 
-
-> ParNew：年轻代收集器
->
-> 6144->640：收集前后的对比
->
-> （6144）：整个年轻代容量
->
-> 6585 -> 2770：整个堆的情况
->
-> （19840）：整个堆大小
-
-
-
-```java
-[GC (CMS Initial Mark) [1 CMS-initial-mark: 8511K(13696K)] 9866K(19840K), 0.0040321 secs] [Times: user=0.01 sys=0.00, real=0.00 secs] 
-	//8511 (13696) : 老年代使用（最大）
-	//9866 (19840) : 整个堆使用（最大）
-[CMS-concurrent-mark-start]
-[CMS-concurrent-mark: 0.018/0.018 secs] [Times: user=0.01 sys=0.00, real=0.02 secs] 
-	//这里的时间意义不大，因为是并发执行
-[CMS-concurrent-preclean-start]
-[CMS-concurrent-preclean: 0.000/0.000 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
-	//标记Card为Dirty，也称为Card Marking
-[GC (CMS Final Remark) [YG occupancy: 1597 K (6144 K)][Rescan (parallel) , 0.0008396 secs][weak refs processing, 0.0000138 secs][class unloading, 0.0005404 secs][scrub symbol table, 0.0006169 secs][scrub string table, 0.0004903 secs][1 CMS-remark: 8511K(13696K)] 10108K(19840K), 0.0039567 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
-	//STW阶段，YG occupancy:年轻代占用及容量
-	//[Rescan (parallel)：STW下的存活对象标记
-	//weak refs processing: 弱引用处理
-	//class unloading: 卸载用不到的class
-	//scrub symbol(string) table: 
-		//cleaning up symbol and string tables which hold class-level metadata and 
-		//internalized string respectively
-	//CMS-remark: 8511K(13696K): 阶段过后的老年代占用及容量
-	//10108K(19840K): 阶段过后的堆占用及容量
-
-[CMS-concurrent-sweep-start]
-[CMS-concurrent-sweep: 0.005/0.005 secs] [Times: user=0.00 sys=0.00, real=0.01 secs] 
-	//标记已经完成，进行并发清理
-[CMS-concurrent-reset-start]
-[CMS-concurrent-reset: 0.000/0.000 secs] [Times: user=0.00 sys=0.00, real=0.00 secs]
-	//重置内部结构，为下次GC做准备
-```
-
-
+G1还是有FGC，多线程并行分配，分配不下，来不及回收还是会有FGC
 
 ### G1
 
-1. ▪https://www.oracle.com/technical-resources/articles/java/g1gc.html
+https://www.oracle.com/technical-resources/articles/java/g1gc.html
+
+分而治之的思想
+
+![image-20210224144710826](JVM.assets/image-20210224144710826.png)
+
+Humongous区域占用连续的存储空间
+
+每个分区可能是年轻代也可能是老年代，但在同一时刻只能属于某个代
+
+#### G1的特点
+
+* 并发收集
+* 压缩空闲时间不会延长GC的暂停时间
+* 更易预测GC的暂停时间（G1根据每次STW的时间，动态调整Y、O区的比例）
+* 适用不需要实现很高的吞吐量，但需要特别快的响应时间的场景
+
+#### G1的一些概念
+
+Cset（Collection Set)：一组可以被回收的分区集合，card被标记需要被回收
+
+Rset（Remembered Set)：每个Region里面都有一块区域，记录着其他Region到本Region的引用（ZGC没有了）
+
+使得垃圾回收器不需要扫描整个堆栈（找谁引用了当前分区中的对象），只需要扫描Rset就可以
+
+#### 并发标记算法
+
+难点：在标记对象的过程中，对象引用关系正在发生改变
+
+CMS、G1使用的是**三色标记算法**
+
+![image-20210224155735610](JVM.assets/image-20210224155735610.png)
+
+![image-20210224155823209](JVM.assets/image-20210224155823209.png)
+
+发生漏标的情况
+
+![image-20210224160022289](JVM.assets/image-20210224160022289.png)
+
+黑色对象指向白色，同时B指向D的引用没有了，B找不到D了且A标记完了不会再标记，产生漏标
+
+漏标：本来是活着的对象，由于没有标记到，被GC回收掉了
+
+![image-20210224160434305](JVM.assets/image-20210224160434305.png) 
+
+解决方案：
+
+1.跟踪A指向D（黑色指向白色），A重新标记为灰色（CMS实现）
+
+2.跟踪B指向D消失（灰色指向白色消失），将引用存到堆栈中区（G1实现）
+
+为什么G1使用STAB？
+
+第一种变成灰色的还需要重新扫描，成本高
+
+灰色指向白色的引用消失时，如果没有黑色指向白色的引用，会被push到堆栈
+
+remark时去堆栈中拿到引用，由于有Rset存在，不需要扫描整个堆去找指向白色的引用，效率高
+
+STAB配合Rset
+
+![image-20210224162123473](JVM.assets/image-20210224162123473.png)
 
 #### G1日志详解
 
@@ -1420,19 +1512,33 @@ OOM产生的原因多种多样，有些程序未必产生OOM，不断FGC(CPU飙�
 ### CMS常用参数
 
 * -XX:+UseConcMarkSweepGC
+
 * -XX:ParallelCMSThreads
   CMS线程数量
-* -XX:CMSInitiatingOccupancyFraction
-  使用多少比例的老年代后开始CMS收集，默认是68%(近似值)，如果频繁发生SerialOld卡顿，应该调小，（频繁CMS回收）
+  
+* -XX:CMSInitiatingOccupancyFraction（**背**）
+  使用多少比例的老年代后开始CMS收集，默认是68%(近似值)，如果频繁发生SerialOld卡顿，应该调小，（缺点：频繁CMS回收）
+  
+  promotion failed：YGC时，Survivor空间溢出，溢出部分对象进入老年代时，如果空间不足则抛出“promotion failed”错误。
+  
+  CMS运行在老年代，老年代占68%时CMS启动，和工作线程一起运行，工作线程用剩下的32%
+  
+   **CMS GC下 会在特殊情况promotion failed（jvm认为内存不够了concurrent mode failure,promotion fail） 转而停下所有线程 去做full gc，也就是Mark Sweep Collection(单线程，年轻代升不到老年代)是Serial Old（也算一次full gc）**
+  
 * -XX:+UseCMSCompactAtFullCollection
   在FGC时进行压缩
+  
 * -XX:CMSFullGCsBeforeCompaction
   多少次FGC之后进行压缩
+  
 * -XX:+CMSClassUnloadingEnabled
+
 * -XX:CMSInitiatingPermOccupancyFraction
   达到什么比例时进行Perm回收
+  
 * GCTimeRatio
   设置GC时间占用程序运行时间的百分比
+  
 * -XX:MaxGCPauseMillis
   停顿时间，是一个建议时间，GC会尝试用各种手段达到这个时间，比如减小年轻代
 
@@ -1460,7 +1566,7 @@ OOM产生的原因多种多样，有些程序未必产生OOM，不断FGC(CPU飙�
 
 
 
-#### 作业
+#### 
 
 1. -XX:MaxTenuringThreshold控制的是什么？
    A: 对象升入老年代的年龄
@@ -1515,7 +1621,10 @@ OOM产生的原因多种多样，有些程序未必产生OOM，不断FGC(CPU飙�
 
         1. 扩内存
         2. 提高CPU性能（回收的快，业务逻辑产生对象的速度固定，垃圾回收越快，内存空间越大）
-        3. 降低MixedGC触发的阈值，让MixedGC提早发生（默认是45%）
+        3. 降低MixedGC触发的阈值，让MixedGC提早发生（默认是45%，调低）（MIXed GC就是CMS的过程，最后一步不太一样）
+    ![image-20210224154719671](JVM.assets/image-20210224154719671.png)
+
+    筛选最需要回收的，垃圾占的最多的region，把region中活着的对象复制到其他region，然后回收
 
  18. 问：生产环境中能够随随便便的dump吗？
      小堆影响不大，大堆会有服务暂停或卡顿（加live可以缓解），dump前会有FGC
@@ -1544,5 +1653,12 @@ OOM产生的原因多种多样，有些程序未必产生OOM，不断FGC(CPU飙�
    2. jmap -histo pid
    3. jmap -clstats pid
 
+# 纤程
+
+![image-20210224180005019](JVM.assets/image-20210224180005019.png)
 
 
+
+本质区别
+
+启动线程需要内核的调用，纤程在用户态进行调用
