@@ -669,6 +669,16 @@ garbage collector
 
 #### 4.JVM内存分代模型（用于分代垃圾回收算法）
 
+YGC ：对[新生代](https://www.baidu.com/s?wd=新生代&tn=24004469_oem_dg&rsv_dl=gh_pl_sl_csd)堆进行gc。频率比较高，因为大部分对象的存活寿命较短，在新生代里被回收。性能耗费较小。
+
+FGC ：全堆范围的gc。默认堆空间使用到达80%(可调整)的时候会触发fgc。以我们生产环境为例，一般比较少会触发fgc，有时10天或一周左右会有一次。
+
+2.什么时候执行YGC和FGC
+
+a.edn空间不足,执行 young gc
+
+b.old空间不足，perm空间不足，调用方法System.gc() ，ygc时的悲观策略, dump live的内存信息时(jmap –dump:live)，都会执行full gc
+
 ![image-20210219215817687](JVM.assets/image-20210219215817687.png)
 
 1. 部分垃圾回收器使用的模型
