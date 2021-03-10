@@ -510,6 +510,8 @@ Heap
 
 ### Native Method Stack
 
+线程私有
+
 ### Direct Memory
 
 > JVM可以直接访问的内核空间的内存 (OS 管理的内存)
