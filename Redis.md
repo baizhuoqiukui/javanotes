@@ -238,6 +238,63 @@ key value本身就是哈希，value是hash相当于又套了一层
 
 ## Redis使用
 
+### 安装
+
+```sh
+wget https://download.redis.io/releases/redis-5.0.5.tar.gz
+# 解压 -x：解开一个压缩文件的参数指令！extract提取 
+#-f: 使用档案（压缩文件）名字(这是最后一个参数，后面只能接档案名，而且必须接在最后)
+tar xf redis-5.0.5.tar.gz
+```
+
+![image-20210329180234242](Redis.assets/image-20210329180234242.png)
+
+```sh
+# 进行编译
+make 
+```
+
+![image-20210329181023228](Redis.assets/image-20210329181023228.png)
+
+```sh
+# 开启Redis
+./redis-server 
+```
+
+![image-20210329181146099](Redis.assets/image-20210329181146099.png)
+
+```sh
+# 将启动命令迁出，不和源码放在一起
+make install PREFIX=/opt/nyq/redis5
+```
+
+![image-20210329181548191](Redis.assets/image-20210329181548191.png)
+
+```sh
+cd /root/soft/redis-5.0.5/utils
+vi /etc/profile
+# 最后一行定义REDIS_HOME，添加环境变量保证任何路径都能执行脚本
+export REDIS_HOME=/opt/nyq/redis5
+export PATH=$PATH:$REDIS_HOME/bin
+./install_server.sh
+```
+
+![image-20210329183144828](Redis.assets/image-20210329183144828.png)
+
+![image-20210329183257145](Redis.assets/image-20210329183257145.png)
+
+启动脚本redis_6379
+
+![image-20210329183347754](Redis.assets/image-20210329183347754.png)
+
+任意目录都可以启动
+
+```sh
+service redis_6379 start/stop/status
+```
+
+
+
 ### 消息发布订阅
 
 > publish ooxx hello   向ooxx通道推送hello
@@ -296,6 +353,12 @@ bgsave： background save
 
 ![image-20210203161611275](Redis.assets/image-20210203161611275.png)
 
+export可以让子进程看到父进程的数据，并且子进程的修改不会破坏父进程
+
+8点的时候fork一个子进程进行写入磁盘，父进程修改不影响子进程的写磁盘的操作
+
+写时复制，速度快，占用特别小的空间，第一行是子进程
+
 父子进程隔离，fork命令创建子进程，父子进程指向同一物理地址（指针复制），很小的空间，速度很快
 
 copy on write 修改数据时会复制数据，修改指针不是覆盖，不用修改所有数据，改的地方复制
@@ -311,6 +374,18 @@ copy on write 修改数据时会复制数据，修改指针不是覆盖，不用
 AOF（append only file）日志
 
 ![image-20210203173005292](Redis.assets/image-20210203173005292.png)
+
+记录文件的写操作
+
+有可能来回写（写成a，写成b来回反复），然而aof的日志会很多，4.0之前会合并重复命令，删除抵消命令
+
+弊端：体量大、恢复慢
+
+优点：丢失数据少
+
+混合开启时只会用AOF来进行恢复（aof恢复数据完整性好一些），4.0后aof中包含rdb全量，增量追加写操作
+
+
 
 no是缓存区满了才写入磁盘，always是每次都写入，每秒在他俩之间
 
@@ -364,17 +439,27 @@ CAP原则又称CAP定理，指的是在一个分布式系统中，[一致性](ht
 
 设置主从
 
-client中  replaceof host port 追随哪个主，5.0以前是 slaveof
+client中  replicaofhost port 追随哪个主，5.0以前是 slaveof
 
-replaceof no one 不追随其他
+replicaofno one 不追随其他
 
 从节点更新数据之前，需要将old data flush 掉（清空），然后再同步 
 
-如果某个从节点突然挂掉了，在这期间主节点数据有更新，当从节点恢复时会增量同步，如果开启aof appendonlyof
+如果某个从节点突然挂掉了，在这期间主节点数据有更新，当从节点恢复时会增量同步(队列中记录偏移量)
 
-会全量同步（aof模式没有记录 master id，RDB模式记录了）
+如果开启aof appendonlyof会全量同步（aof模式没有记录 master id，RDB模式记录了）
+
+总结：
+
+​		不开启aof时同步rdb，如果从挂掉了且期间有数据更新，主中会有队列记录偏移量，可以进行增量更新；
+
+​		开启aof时每次都全量同步（不碰rdb），因为aof中没有记录masterID
 
 ![image-20210206211127643](Redis.assets/image-20210206211127643.png)
+
+
+
+
 
 ```sh
 # 当一个slave失去和master的连接，或者同步正在进行中，slave的行为有两种可能：
@@ -423,15 +508,32 @@ repl-blocking-size 1mb
 
 ![image-20210207103412747](Redis.assets/image-20210207103412747.png)
 
+1. 根据业务拆分redis，不同业务访问不同redis
+2. 通过算法，hash+取模（数据分片）
+3. random，随机放入redis，另一个客户端取数据，一般用作消息队列
+4. 一致性哈希算法
+
 取模方法会有弊端，没法进行redis的扩展，客户端代码也得变。
 
-**一致性哈希**
+#### **一致性哈希**
 
 ![image-20210207213027616](Redis.assets/image-20210207213027616.png)
 
+data和redis node一起参与哈希算法，node通过hash算法映射到hash环上
+
+数据来了，也进行hash运算
+
 node节点在哈希环上是物理的，data找到虚拟的点，通过一些算法，比如说找最近的，写入最近的节点
 
-新增node3节点物理的，一小部分不能命中，击穿到mysql
+新增node3节点物理的，一小部分不能命中，击穿到mysql，对比哈希取模不会进行所有数据重新hash计算
+
+解决方案：如果不能一命中，再向前找一个；或者redis进行淘汰方案，LRU、LFU、FIFO
+
+> - LRU (Least recently used) 最近最少使用，如果数据最近被访问过，那么将来被访问的几率也更高。
+> - LFU (Least frequently used) 最不经常使用，如果一个数据在最近一段时间内使用次数很少，那么在将来一段时间内被使用的可能性也很小。
+> - FIFO (Fist in first out) 先进先出， 如果一个数据最先进入缓存中，则应该最早淘汰掉。
+
+
 
 假如只有两个物理点，有可能会出现数据偏移，都到一个节点上，可以让node后接9个数，一共算出20个节点，其中2个是物理节点，18个是虚拟的，数据来了找最近的虚拟节点，再跳转到物理节点
 

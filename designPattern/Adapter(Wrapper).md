@@ -8,7 +8,7 @@
 public class Main {
     public static void main(String[] args) throws Exception {
         FileInputStream fis = new FileInputStream("c:/test.text");
-        InputStreamReader isr = new InputStreamReader(fis);
+        InputStreamReader isr = new InputStreamReader(fis);//字节和字符的桥梁，适配器模式
         BufferedReader br = new BufferedReader(isr);
         String line = br.readLine();
         while (line != null && !line.equals("")) {
