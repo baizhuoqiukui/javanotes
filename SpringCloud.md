@@ -610,7 +610,7 @@ management.endpoint.shutdown.enabled=true
 
 ### 依赖注入
 
-```
+```java
 	@Bean
 	// 开启负载均衡
 	@LoadBalanced
@@ -621,7 +621,7 @@ management.endpoint.shutdown.enabled=true
 
 接下来便可以使用资源地址调用服务
 
-```
+```java
 String url ="http://provider/getHi";
 String respStr = restTemplate.getForObject(url, String.class);
 		
@@ -645,7 +645,7 @@ getForEntity方法的返回值是一个ResponseEntity，ResponseEntity是Spring�
 
 **调用方**
 
-```
+```java
 		String url ="http://provider/getMap";
 		   
 		ResponseEntity<Map> entity = restTemplate.getForEntity(url, Map.class);
@@ -655,7 +655,7 @@ getForEntity方法的返回值是一个ResponseEntity，ResponseEntity是Spring�
 
 **生产方**
 
-```
+```java
 	@GetMapping("/getMap")
 	public Map<String, String> getMap() {
 		
