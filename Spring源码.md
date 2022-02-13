@@ -3013,24 +3013,39 @@ https://juejin.cn/post/6882266649509298189
 
 # Srping AOP
 
-Aspect(切面)：编写额外的逻辑类
+AOP是OOP的补充，当我们需要为多个对象引入一个公共行为，比如日志，操作记录等，就需要在每个对象中引用公共行为（每个类中都需要调用c.method()），这样程序就产生了大量的重复代码，使用AOP可以完美解决这个问题。
 
-PointCut（切入点）：一个匹配连接点的**表达式**
+Aspect(切面、方面)：编写额外的逻辑类，拦截器类，其中会定义切点以及通知
 
-joinPoint（连接点）：表达式匹配被应用在哪些方法上（被代理的方法）
+joinPoint（连接点）：表达式匹配被应用在哪些方法上（**被代理的方法**）
 
-advice 通知：after、before、around... 
+PointCut（切入点）：一个匹配连接点的**表达式**，用它来指明一系列的连接点，表达式下边的方法名字就是切入点的名字
 
-![image-20210923145546194](Spring源码.assets/image-20210923145546194.png)
+通知：切面当中的方法，声明通知方法在目标业务层的执行位置，通知类型如下：
+		前置通知：@Before 在目标业务方法执行之前执行
+		后置通知：@After 在目标业务方法执行之后执行
+		返回通知：@AfterReturning 在目标业务方法返回结果之后执行
+		异常通知：@AfterThrowing 在目标业务方法抛出异常之后
+		环绕通知：@Around 功能强大，可代替以上四种通知，还可以控制目标业务方法是否执行以及何时执行
 
+![image-20220205205108569](Spring源码.assets/image-20220205205108569.png)
 
+织入（Weaving）：织入是把切面应用到目标对象并**创建新的代理对象**的过程。切面在指定的连接点被织入到目标对象中。
+
+在目标对象的生命周期中有很多个点可以进行织入：
+
+**编译期**：切面在目标类编译时被织入。这种方式需要特殊的编译器。AspectJ的织入编译器就是以这种方式织入切面的。
+**类加载期**：切面在目标类加载到JVM时被织入。这种方式需要特殊的类加载器，它可以在目标类被引入应用之前增强该目标类的字节码。AspectJ 5的加载时织入就支持这种方式织入切面。
+**运行期**：切面在应用运行的某个时刻被织入。一般情况下，在织入切面时，AOP容器会为目标对象动态的创建一个代理对象。**Spring AOP就是以这种方式织入切面的。**
 
 ```java
 @Aspect // 切面
 @Component
 public class LogUtil {
-
-    @Pointcut("execution(public Integer com.mashibing.aop.annotation.service.MyCalculator.*(Integer,Integer))")// 切入点
+  
+		// 切入点
+    @Pointcut("execution(public Integer com.mashibing.aop.annotation.service.MyCalculator.*(Integer,Integer))")
+  	// 切入点名字
     public void myPointCut(){}
 
 //    @Pointcut("execution(* *(..))")
@@ -3038,6 +3053,7 @@ public class LogUtil {
 
     @Around("myPointCut()")// 通知
 //    @Order(4)
+  	// ProceedingJoinPoint is only supported for around advice，用其他注解会报错
     public Object around(ProceedingJoinPoint pjp) throws Throwable {
         Signature signature = pjp.getSignature();
         Object[] args = pjp.getArgs();
@@ -5320,3 +5336,8 @@ private void cleanupAfterCompletion(DefaultTransactionStatus status) {
 ```
 
 只有在checkout方法完成后才会提交，因为服用的外层的jdbc连接，需要等外层的事务全部执行完才会提交
+
+# Spring源码总结
+
+
+

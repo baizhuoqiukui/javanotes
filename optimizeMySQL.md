@@ -420,7 +420,7 @@ SELECT event_id,event_name,source,timer_wait,object_name,index_name,operation,ne
 
 ### 整型类型
 
-​		TINYINT、SMALLINT、MEDIUMINT、INT、BIGINT分别使用8、16、24、32、64位字节，尽量使用满足需求的最小数据类型。
+​		TINYINT、SMALLINT、MEDIUMINT、INT、BIGINT分别使用8、16、24、32、64位字节bit，尽量使用满足需求的最小数据类型。
 
 ### 字符和字符串类型
 
