@@ -488,6 +488,10 @@ public interface StaticMethod {
 
 当要传递给 Lambda 体的操作，已经实现的方法了，可以使用方法引用！
 
+相当于把已存在的方法copy到lambda表达式中的方法体里
+
+已存在的方法的参数类型和返回值类型要和抽象方法进行兼容
+
 ```java
 public static class Car {
     public static Car create( final Supplier< Car > supplier ) {
@@ -538,9 +542,345 @@ final Car police = Car.create( Car::new );
 cars.forEach( police::follow );
 ```
 
+### 底层实现
+
+本质：函数体调用了一个已存在的方法
+
+![image-20230315183645649](Java8新特性.assets/image-20230315183645649-8876608.png)
+
+
+
 ## Stream API
 
+基于lambda表达式，流式操作，提供串行和并行两种方式，使用Fork/Join框架拆分任务
 
+```java
+/*
+    JDK8 Stream API:
+        https://docs.oracle.com/javase/8/docs/api/index.html
+    使用传统的方式,遍历集合,对集合中的数据进行过滤
+        查找集合中姓张的人
+        再筛选出张姓中名字有三个字的人
+        最后打印出来
+ */
+public class Demo01List {
+    public static void main(String[] args) {
+        //创建一个List集合,存储姓名
+        List<String> list = new ArrayList<>();
+        list.add("张无忌");
+        list.add("周芷若");
+        list.add("赵敏");
+        list.add("张强");
+        list.add("张三丰");
+
+        //对list集合中的元素进行过滤,只要以张开头的元素,存储到一个新的集合中
+        List<String> listA = new ArrayList<>();
+        for (String s : list) {
+            if (s.startsWith("张")) {
+                listA.add(s);
+            }
+        }
+
+        //对listA集合进行过滤,只要姓名长度为3的人,存储到一个新集合中
+        List<String> listB = new ArrayList<>();
+        for (String s : listA) {
+            if (s.length() == 3) {
+                listB.add(s);
+            }
+        }
+
+        //遍历listB集合
+        for (String s : listB) {
+            System.out.println(s);
+        }
+
+        // 使用Stream实现
+        Stream<String> stream = list.stream();
+        stream.filter(name -> name.startsWith("张")) // 这里的stream对象，和下面的stream不是同一个
+                .filter(name -> name.length() == 3)
+                .forEach(name -> System.out.println(name));
+//        stream.limit(1); // java.lang.IllegalStateException: stream has already been operated upon or closed
+    }
+}
+```
+
+流模型的操作很丰富，这里介绍一些常用的API。这些方法可以被分成两种：
+
+- **延迟方法**：返回值类型仍然是 Stream 接口自身类型的方法，因此支持链式调用。（除了终结方法外，其余方法均为延迟方法。）
+- **终结方法**：返回值类型不再是 Stream 接口自身类型的方法，因此不再支持类似 StringBuilder 那样的链式调用。本小节中，终结方法包括 count 和 forEach 方法。
+
+> 备注：本小节之外的更多方法，请自行参考API文档。
+
+### foreach
+
+```java
+/*
+    Stream流中的常用方法_forEach
+    void forEach(Consumer<? super T> action);
+    该方法接收一个Consumer接口函数，会将每一个流元素交给该函数进行处理。
+    Consumer接口是一个消费型的函数式接口,可以传递Lambda表达式,消费数据
+
+    简单记:
+        forEach方法,用来遍历流中的数据
+        是一个终结方法,遍历之后就不能继续调用Stream流中的其他方法
+ */
+public class Demo02Stream_forEach {
+    public static void main(String[] args) {
+        //获取一个Stream流
+        Stream<String> stream = Stream.of("张三", "李四", "王五", "赵六", "田七");
+        //使用Stream流中的方法forEach对Stream流中的数据进行遍历
+        stream.forEach(name -> System.out.println(name));
+    }
+}
+```
+
+### Filter
+
+```java
+/*
+    Stream流中的常用方法_filter:用于对Stream流中的数据进行过滤
+    Stream<T> filter(Predicate<? super T> predicate);
+    filter方法的参数Predicate是一个函数式接口,所以可以传递Lambda表达式,对数据进行过滤
+    Predicate中的抽象方法:
+        boolean test(T t);
+ */
+public class Demo03Stream_filter {
+    public static void main(String[] args) {
+        //创建一个Stream流
+        Stream<String> stream = Stream.of("张三丰", "张翠山", "赵敏", "周芷若", "张无忌");
+        //对Stream流中的元素进行过滤,只要姓张的人
+        Stream<String> stream2 = stream.filter(name -> name.startsWith("张"));
+        //遍历stream2流
+        stream2.forEach(name -> System.out.println(name));
+
+        /*
+            Stream流属于管道流,只能被消费(使用)一次
+            第一个Stream流调用完毕方法,数据就会流转到下一个Stream上
+            而这时第一个Stream流已经使用完毕,就会关闭了
+            所以第一个Stream流就不能再调用方法了
+            IllegalStateException: stream has already been operated upon or closed
+         */
+        //遍历stream流
+        stream.forEach(name -> System.out.println(name));
+    }
+}
+```
+
+### Map
+
+```java
+/*
+    Stream流中的常用方法_map:用于类型转换
+    如果需要将流中的元素映射到另一个流中，可以使用map方法.
+    <R> Stream<R> map(Function<? super T, ? extends R> mapper);
+    该接口需要一个Function函数式接口参数，可以将当前流中的T类型数据转换为另一种R类型的流。
+    Function中的抽象方法:
+        R apply(T t);
+ */
+public class Demo04Stream_map {
+    public static void main(String[] args) {
+        //获取一个String类型的Stream流
+        Stream<String> stream = Stream.of("1", "2", "3", "4");
+        //使用map方法,把字符串类型的整数,转换(映射)为Integer类型的整数
+        stream.map(s -> Integer.parseInt(s)).forEach(i -> System.out.println(i));
+
+    }
+}
+```
+
+### count
+
+```java
+/*
+    Stream流中的常用方法_count:用于统计Stream流中元素的个数
+        long count();
+        count方法是一个终结方法,返回值是一个long类型的整数
+        所以不能再继续调用Stream流中的其他方法了
+ */
+public class Demo05Stream_count {
+    public static void main(String[] args) {
+        ArrayList<Integer> list = new ArrayList<>();
+        list.add(1);
+        list.add(2);
+        list.add(3);
+        list.add(4);
+        list.add(5);
+        list.add(6);
+        list.add(7);
+        //获取一个Stream流，统计元素个数
+        long count = list.stream().count(); // count野心很大
+        System.out.println(count);
+    }
+}
+```
+
+### Collect
+
+```java
+/**
+    Stream流的收集方法
+        R collect(Collector collector)
+
+    它是通过工具类Collectors提供了具体的收集方式
+        public static <T> Collector toList()：把元素收集到List集合中
+        public static <T> Collector toSet()：把元素收集到Set集合中
+        public static Collector toMap(Function keyMapper,Function valueMapper)：把元素收集到Map集合中
+    需求1：得到名字为3个字的流
+    需求2：把使用Stream流操作完毕的数据收集到List集合中并遍历
+    需求3：得到年龄大于25的流
+    需求4：把使用Stream流操作完毕的数据收集到Set集合中并遍历
+    需求5：得到字符串中年龄数据大于28的流
+    需求6：把使用Stream流操作完毕的数据收集到Map集合中并遍历，字符串中的姓名作键，年龄作值
+ */
+public class Demo06Stream_collect {
+    public static void main(String[] args) {
+        //创建List集合对象
+        List<String> list = new ArrayList<String>();
+        list.add("林青霞");
+        list.add("张曼玉");
+        list.add("王祖贤");
+        list.add("柳岩");
+
+        //需求1：得到名字为3个字的流
+        Stream<String> listStream = list.stream().filter(s -> s.length() == 3);
+
+        //需求2：把使用Stream流操作完毕的数据收集到List集合中并遍历
+        List<String> names = listStream.collect(Collectors.toList());
+        for (String name : names) {
+            System.out.println(name);
+        }
+
+        //创建Set集合对象
+        Set<Integer> set = new HashSet<Integer>();
+        set.add(10);
+        set.add(20);
+        set.add(30);
+        set.add(33);
+        set.add(35);
+
+        //需求3：得到年龄大于25的流
+        Stream<Integer> setStream = set.stream().filter(age -> age > 25);
+
+        //需求4：把使用Stream流操作完毕的数据收集到Set集合中并遍历
+        Set<Integer> ages = setStream.collect(Collectors.toSet());
+        for (Integer age : ages) {
+            System.out.println(age);
+        }
+
+        //定义一个字符串数组，每一个字符串数据由姓名数据和年龄数据组合而成
+        String[] strArray = {"林青霞,30", "张曼玉,35", "王祖贤,33", "柳岩,25"};
+
+        //需求5：得到字符串中年龄数据大于28的流
+        Stream<String> arrayStream = Stream.of(strArray).filter(
+                s -> Integer.parseInt(s.split(",")[1]) > 28);
+
+        //需求6：把使用Stream流操作完毕的数据收集到Map集合中并遍历，字符串中的姓名作键，年龄作值
+        Map<String, Integer> map = arrayStream.collect(Collectors.toMap(
+                s -> s.split(",")[0],
+                s -> Integer.parseInt(s.split(",")[1])
+        ));
+        Set<String> keySet = map.keySet();
+        for (String key : keySet) {
+            System.out.println(key + ",," + map.get(key));
+        }
+    }
+}
+```
+
+### Skip
+
+```java
+/*
+    Stream流中的常用方法_skip:用于跳过元素
+    如果希望跳过前几个元素，可以使用skip方法获取一个截取之后的新流：
+    Stream<T> skip(long n);
+        如果流的当前长度大于n，则跳过前n个；否则将会得到一个长度为0的空流。
+ */
+public class Demo07Stream_skip {
+    public static void main(String[] args) {
+        //获取一个Stream流
+        String[] arr = {"美羊羊","喜洋洋","懒洋洋","灰太狼","红太狼"};
+        Stream<String> stream = Stream.of(arr);
+        //使用skip方法跳过前3个元素
+        stream.skip(3).forEach(name -> System.out.println(name));
+    }
+}
+```
+
+### Concat
+
+```java
+/*
+    Stream流中的常用方法_concat:用于把流组合到一起
+    如果有两个流，希望合并成为一个流，那么可以使用Stream接口的静态方法concat
+    static <T> Stream<T> concat(Stream<? extends T> a, Stream<? extends T> b)
+ */
+public class Demo08Stream_concat {
+    public static void main(String[] args) {
+        //创建一个Stream流
+        Stream<String> stream1 = Stream.of("张三丰", "张翠山", "赵敏", "周芷若", "张无忌");
+        //获取一个Stream流
+        String[] arr = {"美羊羊","喜洋洋","懒洋洋","灰太狼","红太狼"};
+        Stream<String> stream2 = Stream.of(arr);
+        //把以上两个流组合为一个流
+        Stream.concat(stream1, stream2).forEach(name -> System.out.println(name));
+    }
+}
+```
+
+### FlatMap
+
+stream api 的 flatMap方法接受一个lambda表达式函数， 函数的返回值必须也是一个stream类型，flatMap方法最终会把所有返回的stream合并。
+
+把几个小的list转换到一个大的list。
+
+```java
+private static class Klass {
+    private int field;
+
+    public Klass(int field) {
+        this.field = field;
+    }
+
+    @Override
+    public String toString() {
+        return "field=" + field;
+    }
+}
+
+private static class KlassGroup {
+    private List<Klass> group = new ArrayList<>();
+
+    public KlassGroup(Klass... objList) {
+        for (Klass item : objList) {
+            this.group.add(item);
+        }
+    }
+
+    public List<Klass> getKlassList() {
+        return group;
+    }
+}
+
+List<KlassGroup> groupList = Arrays.asList(
+        new KlassGroup(new Klass(1), new Klass(2), new Klass(3)),
+        new KlassGroup(new Klass(4), new Klass(5), new Klass(6)),
+        new KlassGroup(new Klass(7), new Klass(8), new Klass(9)),
+        new KlassGroup(new Klass(10))
+);
+
+// Java 8 之前 
+List<Klass> result2 = new ArrayList<>();
+for (KlassGroup group : groupList) {
+    for (Klass klass : group.getKlassList()) {
+        result2.add(klass);
+    }
+}
+// Java 8 以后
+List<Klass> result3 = groupList.stream()
+        .flatMap(it -> it.getKlassList().stream())
+        .collect(Collectors.toList());
+```
 
 ## Optional 类
 

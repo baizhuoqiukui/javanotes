@@ -8,27 +8,27 @@
 
 （Input/Output Operations Per Second）磁盘的 IOPS、也就是每秒能进行多少次IO
 
-### 		硬盘：
+**硬盘：**
 
 ​				1. 寻址： ms
 
 ​				2. 带宽：G / M
 
-### 		内存：
+**内存：**
 
 ​				1. 寻址：ms 
 
 ​				2. 带宽：很大 硬盘比内存在寻址上慢了10W倍
 
-### 		I/O Buffer：成本问题
+**I/O Buffer**：成本问题
 
 ​				磁盘有磁道和扇区，一扇区512Byte，如果容器太小，索引成本会变大
 
-### 		4K对齐
+**4K对齐**
 
 ​				操作系统，从磁盘最小读取4k
 
-### 		面试题
+**面试题**
 
 ​				表越大，数据库性能下降？
 
@@ -36,29 +36,49 @@
 
 ## 简介
 
-## ![image-20210131110147012](Redis.assets/image-20210131110147012.png)				![image-20210131110406161](Redis.assets/image-20210131110406161.png)
+ ![image-20210131110147012](Redis.assets/image-20210131110147012.png)				![image-20210131110406161](Redis.assets/image-20210131110406161.png)
 
 ## IO发展过程
 
 ![image-20210202154937363](Redis.assets/image-20210202154937363.png)
 
-BIO时期，线程通过内核读取client发送的数据，读取不到就阻塞着，没办法执行后续代码
+一个连接对应一个文件标识符fd，read命令可以读取fd
 
-NIO时期，线程在用户态轮询读取数据，同步非阻塞，如果轮询次数太多成本很高（频繁用户态与内核态的切换）
+BIO时期，线程通过内核读取client发送的数据，读取不到就阻塞着，没办法执行后续代码，某一时间片上有可能fd 8 的线程抢到了cpu，但是fd8的数据包还没到，此时fd9的数据包已经到了，cpu没有时时刻刻处理真正到达的数据
+
+jvm一个线程的成本是1MB，线程多了有维护成本（cpu忙着调度、内存成本）
+
+NIO时期，socket变成了非阻塞，此时可以用一个线程，死循环读fd8 fd9 ，有数据的返回有，没数据返回没有，不阻塞
+
+线程在**用户态轮询**读取数据，同步非阻塞，如果轮询次数太多成本很高（轮训在用户态但是read命令频繁用户态与内核态的切换）
 
 ![image-20210202155017076](Redis.assets/image-20210202155017076.png)
 
-多路复用，还是同步非阻塞
+多路复用，还是同步非阻塞，减少了内核和用户的切换次数
 
-为了解决问题，内核要变， 进程只需调用内核中的select（轮询在内核，之前调用1000次，现在只需要一次），哪个fd有返回结果了再拿着fd去调用read
+内核变了，增加了系统调用select，传1000个fd，内核去进行监听这1000个
 
-问题传1000个文件标识符
+为了解决问题，内核要变， 进程只需调用内核中的select（轮询在内核，之前调用1000次，现在只需要一次），哪个fd有返回结果了再拿着fd（有数据的）去调用read，也就是说不会调用没有数据fd 的read
 
-1.create 产生epoll的文件标识符
+每次传，传完回复谁能用，再拿能用的去read 
 
-2.1000个连接注册到红黑树
+这些都是jvm帮咱们进行调用
 
-3.数据到了从红黑树->链表
+---
+
+问题：还是传1000个文件标识符来回传？？？怎么解决
+
+内核和用户维护共享空间都可以访问，通过mmap进行调用
+
+线程1000fd放到红黑树里，内核就可以看到都有哪些fd
+
+epoll有三个系统调用 create 、 ctl（增加或删除fd） 、 wait
+
+1.create 产生epoll的文件标识符，用来操作mmap的，作为参数传入到ctl系统条臃肿
+
+2.1000个连接注册到红黑树（ctl add然后调用wait等待）
+
+3.数据到了从红黑树->链表（有顺序）
 
 4.用户从链表取，然后调用read
 
@@ -72,7 +92,7 @@ epoll准备文件共享空间mmap，kernel调用后返回数据到链表中（�
 
 redis是单进程、单线程处理用户请求
 
-通过epoll遍历链表，哪个有数据（有顺序）哪个返回
+通过epoll遍历链表，哪个有数据（有顺序，网络到达的顺序）哪个返回
 
 redis默认16个库 -n选择连接哪个库
 
@@ -92,67 +112,107 @@ redis默认16个库 -n选择连接哪个库
 
 字符串
 
-> set k1 ooxx nx   nx表示ooxx不存在时才进行设置，应用场景分布式锁，一堆人想删除一个文件，谁成功了拿到锁
+> set key value   // 如果value值存在，无视旧值、类型直接覆盖
 >
-> set k2 ooxx xx   xx只有存在的时候才能更新
+> get key // 获取key
 >
-> mset k3 a k4 b  同时设置多个  	mget  k3 k4 同时取出
+> exists key // 判断某个key是否存在
 >
-> append   k1   value 追加 
+> strlen key // 返回key所存储的字符串的长度 'value' 长度是5
 >
-> getRange  k1 0  6 	截取Key中value的某一部分  -1表示最后一个字符，如图正反向索引
+> del key // 删除某个key
 >
-> getset k1 value    取出后更新
+> mset k3 a k4 b //  批量设置多个k、v  	
 >
-> setrange  key  偏移量  value  设置到偏移量的某个位置
+> mget  k3 k4 //  同时取出多个k 
 >
-> strlen key 	返回字符串长度
+> expire key  60  // 数据在 60s 后过期
+>
+> setex key 60 value // 数据在 60s 后过期 (setex:[set] + [ex]pire)
+>
+> ttl key // 查看数据还有多久过期
+>
+> Setnx  k1 ooxx    nx表示ooxx不存在时才进行设置(不能覆盖)，应用场景分布式锁，一堆人想删除一个文件，谁成功了拿到锁
+>
+> append   k1   value  // 字符串追加 
+>
+> getRange  k1 0  6 	// 截取Key中value的某一部分  -1表示最后一个字符，如图正反向索引
+>
+> getset k1 value   //  取出后更新
+>
+> setrange  key  偏移量  value   // 设置到偏移量的某个位置
 >
 > 
 
 数值
 
->Incrby key  22 加22   不写默认加一
+>set key 1      //  value 是数值类型
 >
->decrby  key 22  减22  不写默认减一
+>Incrby key  22  // 加22   不写默认加一
 >
->incrbyfloat  k1  0.5   加浮点数
+>decrby  key 22  // 减22  不写默认减一
+>
+>incrbyfloat  k1  0.5  //  加浮点数
 
 bitmap
 
->setbit   key  1  1  将第一位bit设置位1，1字节=8bit
+>setbit   key  1  1  // 将第一位bit设置位1，1字节=8bit
 >
->bitpos  key   bit  start end  start和end是字节的索引，找到bit在索引的哪个位置（bit的索引）
+>bitpos  key   bit  start end  // start和end是字节的索引，找到bit在索引的哪个位置（bit的索引）
 >
->bitcount  key   bit  start end  start统计出现次数
+>bitcount  key   bit  start end  // 统计出现次数
 >
->bitop   operation（与或非） destkey  key..  操作目标key..进行操作，可以有多个
+>bitop   operation（与或非） destkey  key..  // 操作目标key..进行操作，可以有多个
+
+应用场景：
+
+只需要保存状态信息的场景（0、1就能表示），登录信息、是否签到、是否点赞
+
+用户在线状态
+
+对于获取或者统计用户在线状态，使用 bitmap 是一个节约空间且效率又高的一种方法。
+
+只需要一个 key，然后用户 ID 为 offset，如果在线就设置为 1，不在线就设置为 0。
+
+统计活跃用户
+
+使用时间作为 key，然后用户 ID 为 offset，如果当日活跃过就设置为 1
+
+使用位运算，统计连续在线的用户有多少
+
+
 
 **list**
 
+Redis 的 list 的实现为一个 **双向链表**
+
 ![image-20210203090019729](Redis.assets/image-20210203090019729.png)
 
-> 栈 同向命令   队列  反向命令
+> 栈 同向命令  
 >
-> lpush key value  ,value1...  从左边插入
+> 队列  反向命令
 >
-> rpush key value  ,value1...  从右边插入
+> lpush key value  ,value1...  // 从左边插入
 >
-> l/rpop key	弹出左/右边第一个元素
+> rpush key value  ,value1...  // 从右边插入
 >
-> lrange key  start  stop  范围查询，可以使用正负索引，l是list的意思  所有0，-1
+> l/rpop key	// 弹出左/右边第一个元素
 >
-> lindex key index  去除索引元素，-1取出最后一个
+> lrange key  start  stop   // 范围查询，可以使用正负索引，l是list的意思  所有0，-1
 >
-> lset key  index value  将索引位置设为value
+> lindex key index  // 获取索引元素，-1取出最后一个
 >
-> lrem key count value  移除几个值为value的元素  count大于0时从左往右数
+> lset key  index value  // 将索引位置设为value
 >
-> linsert before/after pivot value  在某个位置插入一个元素 ，pivot是元素的值，如果有两个pivot在第一个位置加
+> lrem key count value  // 移除几个值为value的元素  count大于0时从左往右数
 >
-> blpop key timeout  阻塞获取元素，后面是超时时间，push后，第一个阻塞的获得到元素  阻塞的，单播队列FIFO
+> linsert before/after pivot value  // 在某个位置插入一个元素 ，pivot是元素的值，如果有两个pivot在第一个位置加
 >
-> ltrim key start end 删除两端的元素start左边，end右边
+> blpop key timeout  // 阻塞获取元素，后面是超时时间，push后，第一个阻塞的获得到元素  阻塞的，单播队列FIFO
+>
+> ltrim key start end // 删除两端的元素start左边，end右边
+>
+> Llen key // 查看链表长度 
 
  **hash**
 
@@ -160,23 +220,25 @@ bitmap
 
 key value本身就是哈希，value是hash相当于又套了一层
 
-> hset key field value  field是子key
+> hset key field value  // field是子key
 >
-> hmset key  field value，field1 value，field2 value 对已存在的key进行设置
+> hmset key  field value，field1 value，field2 value // 对已存在的key批量进行设置
 >
 > hget key field  
 >
 > hmget key field field1 field2..
 >
-> hkeys key 取出所有的field
+> hkeys key // 取出所有的field
 >
-> hvalues key 取出所有的value
+> hvalues key // 取出所有的value
 >
-> hegetall key   取出所有的field value
+> hegetall key   // 取出所有的field value
 >
-> hincrbyfloat key field 0.5/-1 增加0.5 ，减1
+> hincrbyfloat key field 0.5/-1 // 增加0.5 ，减1
 
   **set**
+
+Redis 中的 set 类型是一种无序集合，集合中的元素没有先后顺序。当你需要存储一个列表数据，又不希望出现重复数据时，set 是一个很好的选择，并且 set 提供了判断某个成员是否在一个 set 集合内的重要接口，这个也是 list 所不能提供的。可以基于 set 轻易实现交集、并集、差集的操作。比如：你可以将一个用户所有的关注人存在一个集合中，将其所有粉丝存在一个集合。Redis 可以非常方便的实现如共同关注、共同粉丝、共同喜好等功能。这个过程也就是求交集的过程。 
 
 集合
 
@@ -184,23 +246,29 @@ key value本身就是哈希，value是hash相当于又套了一层
 
 > sadd key member member1 member2
 >
-> smembers key 给出key中所有member
+> smembers key // 给出key中所有member
 >
-> scard key 给出集合的个数
+> scard key // 给出集合中元素的个数（set长度）
 >
-> srem key member member1 member2
+> srem key member member1 member2 // 删除
 >
-> sinter key1 key2 取key1 key2交集
+> sinter key1 key2 // 取key1 key2交集 
 >
-> sinterstore  key3 key1 key2 取key1 key2交集放入key3
+> sinterstore  key3 key1 key2 //  取key1 key2交集放入key3
 >
-> sunion 并集 sdiff  key1 key2  差集带方向，调整顺序得到不同的结果
+> sunion // 并集 
 >
-> sranmember key count  count为正数时随机取count个，如果count大于元素个数则全部返回，如果为负数时可以重复，一定满足所需要的数量，0不返回
+> sdiff  key1 key2  // 差集带方向，调整顺序得到不同的结果
+>
+> sranmember key count  // count为正数时随机取count个，如果count大于元素个数则全部返回，如果为负数时可以重复，一定满足所需要的数量，0不返回
 
 ### sorted_set
 
 去重排序
+
+和 set 相比，sorted set 增加了一个权重参数 score，使得集合中的元素能够按 score 进行有序排列，还可以通过 score 的范围来获取元素的列表。
+
+应用场景：排行榜
 
 ![image-20210203100903221](Redis.assets/image-20210203100903221.png)
 
@@ -210,15 +278,15 @@ key value本身就是哈希，value是hash相当于又套了一层
 >
 > zrange k1                                           banana orange  apple 
 >
-> zrange k1  withscores						banana 2 orange 3  apple 8
+> zrange k1 0 - 1 withscores						banana 2 orange 3  apple 8
 >
 > zrangebyscore k1  3 8                       orange apple 
 >
-> zdevrange k1 0 1 							  apple orange 
+> zrevrange k1 0 1 							  apple orange 
 >
 > zscore k1  apple								8
 >
-> zrank   k1  										 2 排名
+> zrank   k1  	apple									 2    排名从 0开始
 >
 > zincrby k1 2.5  banana					   4.5	 顺序会变化，实时维护
 >
@@ -229,6 +297,10 @@ key value本身就是哈希，value是hash相当于又套了一层
 **底层结构跳跃表**
 
 双向链表
+
+查询从上向下找
+
+插入从下向上调整
 
 如图，查找很容易，如何插入?
 
@@ -309,7 +381,7 @@ service redis_6379 start/stop/status
 
 ![image-20210203115108311](Redis.assets/image-20210203115108311.png)
 
-线是时间轴，mutli开启事务，exec执行，exec谁先到达谁先执行（队列右边是先到达的）
+线是时间轴从右往左，mutli开启事务，exec执行，exec谁先到达谁先执行（队列右边是先到达的）
 
 watch监控k1，cas操作，如果被更改，撤销操作，不会回滚交给客户端处理
 
@@ -423,6 +495,8 @@ z轴：在xy拆分的基础上，按照优先级、逻辑再拆分，比如说�
 
 ![image-20210206201700473](Redis.assets/image-20210206201700473.png)
 
+监控就是sentinel
+
 自动故障转移，主挂了，找一个从节点做主节点
 
 ![image-20210206202154719](Redis.assets/image-20210206202154719.png)
@@ -502,6 +576,12 @@ repl-blocking-size 1mb
 
 ### Sentinell哨兵
 
+通过发送命令，让Redis服务器返回监控其运行状态，包括主服务器和从服务器。
+
+当哨兵监测到master宕机，会自动将slave切换成master，然后通过**发布订阅模式**通知其他的从服务器，修改配置文件，让它们切换主机。
+
+哨兵和redis部署在同一台机器上，只是端口号不一样
+
 ![image-20210206212159923](Redis.assets/image-20210206212159923.png)
 
 ### 数据拆分（客户端）
@@ -525,7 +605,7 @@ data和redis node一起参与哈希算法，node通过hash算法映射到hash环
 
 node节点在哈希环上是物理的，data找到虚拟的点，通过一些算法，比如说找最近的，写入最近的节点
 
-新增node3节点物理的，一小部分不能命中，击穿到mysql，对比哈希取模不会进行所有数据重新hash计算
+新增node3节点物理的，一小部分不能命中（顺时针到新增节点的部分，新机器没有存储过），击穿到mysql，对比哈希取模不会进行所有数据重新hash计算
 
 解决方案：如果不能一命中，再向前找一个；或者redis进行淘汰方案，LRU、LFU、FIFO
 
@@ -558,6 +638,96 @@ redis实现，redis服务器中有算法+其他节点的mapping，找到后给�
 {oo}k1  {oo}k2 此写法保证k1、k2哈希到同一个节点
 
 ## 面试常问
+
+### 简述
+
+Redis是C语言开发的数据库，与传统的数据库的区别是他的数据存储在内存中，因此它的读写速度非常的快，广泛应用在缓存中。另外除了做缓存外，还可以做分布式锁、消息队列。Redis提供了多种数据类型来满足不同的业务场景。Redis还支持事务、持久化、Lua脚本、多种集群方案
+
+### 分布式缓存常见的技术选型方案有哪些？
+
+用的比较多的是Memcached和Redis，分布式缓存是解决本地缓存在两个服务之间无法共用的问题
+
+### Redis 和 Memcached 的区别和共同点
+
+**共同点**
+
+1. 都是内存数据库，一般都当作缓存来用
+2. 都有过期策略（内存的特性断电消失、容量小不够了会进行置换算法）
+3. 两者的性能都很高（内存的特性快）
+
+**区别**
+
+1. Redis支持丰富的的数据类型（支持更加复杂的应用场景）。Memcached只支持k/v数据类型，Redis支持string、list、hash、set、zset
+2. Redis支持数据持久化，可以将数据持久化到磁盘之中，挂了可以恢复。Memcached数据都在内存之中
+3. 服务器内存使用完了之后，可以将不用的数据放到磁盘上，Memcached就会报异常
+4. Redis原声支持集群模式，Memcached没有原生集群模式
+5. Redis是单线程使用多路IO复用模型，Memcached是多线程，非阻塞IO复用的网络模型
+6. Redis支持更多语言客户端，支持订阅发布模型、Lua事务、事务等功能，Memcached不支持
+7. Memcached 过期数据的删除策略只用了惰性删除，而 Redis 同时使用了惰性删除与定期删除。
+
+**定时删除**
+
+创建一个定时器，当key设置有过期时间，且过期时间到达时，由定时器任务立即执行对键的删除操作 
+优点：节约内存，到时就删除，快速释放掉不必要的内存占用 
+缺点：CPU压力很大，无论CPU此时负载量多高，均占用CPU，会影响redis服务器响应时间和指令吞吐量 
+总结：用处理器性能换取存储空间 （拿时间换空间） 
+
+**惰性删除**
+
+数据到达过期时间，不做处理。等下次访问该数据时，如果未过期，返回数据 ；发现已过期，删除，返回不存在。 
+
+优点：节约CPU性能，发现必须删除的时候才删除 
+
+缺点：内存压力很大，出现长期占用内存的数据 
+
+总结：用存储空间换取处理器性能（拿空间换时间）
+
+**定期删除**
+
+周期性轮询redis库中的时效性数据，采用随机抽取的策略，利用过期数据占比的方式控制删除频度 
+
+特点1：CPU性能占用设置有峰值，检测频度可自定义设置 
+
+特点2：内存压力不是很大，长期占用内存的冷数据会被持续清理 
+
+总结：周期性抽查存储空间 （随机抽查，重点抽查）
+
+### Redis6.0之前为什么不使用多线程
+
+1. 单线程编程容易并且更容易维护；
+2. Redis 的性能瓶颈不在 CPU ，主要在内存和网络；
+3. 多线程就会存在死锁、线程上下文切换等问题，甚至会影响性能。
+
+### Redis6.0之后为何引入多线程
+
+**Redis6.0 引入多线程主要是为了提高网络 IO 读写性能**，因为这个算是 Redis 中的一个性能瓶颈（Redis 的瓶颈主要受限于内存和网络）。
+
+虽然，Redis6.0 引入了多线程，但是 Redis 的多线程只是在网络数据的读写这类耗时操作上使用了，执行命令仍然是单线程顺序执行。
+
+默认禁用
+
+### Redis 数据淘汰策略
+
+**volatile-lru（least recently used）**：从**已设置过期时间**的数据集（server.db[i].expires）中挑选最近最少使用的数据淘汰
+
+**volatile-ttl**：从已设置过期时间的数据集（server.db[i].expires）中挑选将要过期的数据淘汰
+
+**volatile-random**：从已设置过期时间的数据集（server.db[i].expires）中任意选择数据淘汰
+
+**allkeys-lru（least recently used）**：当内存不足以容纳新写入数据时，在键空间中，移除最近最少使用的 key（**这个是最常用的**）
+
+**allkeys-random**：从数据集（server.db[i].dict）中任意选择数据淘汰
+
+**no-eviction**：禁止驱逐数据，也就是说当内存不足以容纳新写入数据时，新写入操作会报错。
+
+4.0 版本后增加以下两种：
+
+1. **volatile-lfu（least frequently used）**：从已设置过期时间的数据集（server.db[i].expires）中挑选最不经常使用的数据淘汰
+2. **allkeys-lfu（least frequently used）**：当内存不足以容纳新写入数据时，在键空间中，移除最不经常使用的 key
+
+
+
+
 
 ### 击穿
 

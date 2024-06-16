@@ -1054,3 +1054,12 @@ public class DiscoveryClient implements EurekaClient {
     }
 }
 ```
+
+## 调优的点
+
+1. 适当减小客户端给eureka发送心跳包的时间，默认30秒（提高服务的发现速度，及时发现挂掉的服务）
+2. 适当减小服务端剔除客户端的时间间隔，默认剔除90秒没收到心跳的client
+3. 2是一个定时任务默认60秒去剔除一次，适当减小定时任务的轮训时间
+4. 适当减小客户端定时拉取服务注册表的时间间隔（第一次拉取后，记录缓存，下次直接读缓存，最终一致性），默认30秒
+5. 缓存优化，三级缓存（3找2找1），一级二级之间强一致性，二级和三级之间最终一致性（默认30秒中同步一次，最终一致性的体现），适当减小时间间隔或者**直接禁用第三级缓存**直接从二级缓存中拉取
+6. client.serviceUrl.defaultZone优化，每个微服务可以随机配置不同的defaultZone顺序。手动做到负载均衡。比如clientA的defaultZone:是eureka1,eureka2,eureka3；clientB的defaultZone:eureka2,eureka3,eureka1。

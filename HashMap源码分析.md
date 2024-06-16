@@ -364,3 +364,147 @@ first = tab[(n - 1) & hash])
 红黑树:
 
 也是一种平衡二叉树，但每个节点有一个存储位表示节点的颜色，可以是红或黑。通过对任何一条从根到叶子的路径上各个节点着色的方式的限制，红黑树确保没有一条路径会比其它路径长出两倍，因此，红黑树是一种弱平衡二叉树**红黑树从根到叶子的最长路径不会超过最短路径的2倍**（由于是弱平衡，可以看到，在相同的节点情况下，AVL树的高度<=红黑树），相对于要求严格的AVL树来说，它的旋转次数少，所以对于搜索，插入，删除操作较多的情况下，用红黑树
+
+## 为什么8转红黑树
+
+原因：
+
+　　红黑树的平均查找长度是log(n)，长度为8，查找长度为log(8)=3，链表的平均查找长度为n/2，当长度为8时，平均查找长度为8/2=4，这才有转换成树的必要；链表长度如果是小于等于6，6/2=3，虽然速度也很快的，但是转化为树结构和生成树的时间并不会太短。
+
+还有选择6和8的原因是：
+
+　　中间有个差值7可以防止链表和树之间频繁的转换。假设一下，如果设计成链表个数超过8则链表转换成树结构，链表个数小于8则树结构转换成链表，如果一个HashMap不停的插入、删除元素，链表个数在8左右徘徊，就会频繁的发生树转链表、链表转树，效率会很低。
+
+## 如果对象做key需要重写哪两个方法
+
+equals、hashcode
+
+每个数组里存储的Node对象中
+
+```java
+static class Node<K,V> implements Map.Entry<K,V> {
+
+    final int hash;// hash值
+    final K key;
+    V value;
+    Node<K,V> next; // 指针 
+```
+
+
+
+
+
+---
+
+### 测试
+
+```java
+public class User {
+
+    private int age;
+    private String name;
+
+    public int getAge() {
+        return age;
+    }
+
+    public void setAge(int age) {
+        this.age = age;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public User(int age, String name) {
+        this.age = age;
+        this.name = name;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        User user = (User) o;
+        return age == user.age && name.equals(user.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(age, name);
+    }
+}
+```
+
+```java
+public class HashCodeTest {
+
+    public static void main(String[] args) {
+        HashMap<User, Integer> map = new HashMap<>();
+        User abc = new User(18, "abc");
+        User abc1 = new User(18, "abc");
+
+        System.out.println("abc的hashcode："+ abc.hashCode());
+        System.out.println("abc1的hashcode："+ abc1.hashCode());
+
+        map.put(abc,1);
+        System.out.println("abc的value："+map.get(abc));
+        System.out.println("----------------");
+        System.out.println("abc1的value："+map.get(abc1));
+    }
+
+
+
+}
+```
+
+---
+
+注释掉hashCode方法和equals方法
+
+![image-20220313143351769](HashMap源码分析.assets/image-20220313143351769.png)
+
+注释掉equals方法，hashCode相同，不同对象相同的值获取不到对应的value
+
+![image-20220313143501624](HashMap源码分析.assets/image-20220313143501624.png)
+
+注释掉hashCode方法，同1
+
+![image-20220313143603542](HashMap源码分析.assets/image-20220313143603542.png)
+
+### 分析
+
+```java
+public V get(Object key) {
+    Node<K,V> e;
+    // 相同的hash再去链表中 
+    return (e = getNode(hash(key), key)) == null ? null : e.value;
+}
+```
+
+```java
+final Node<K,V> getNode(int hash, Object key) {
+    Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
+    if ((tab = table) != null && (n = tab.length) > 0 &&
+        (first = tab[(n - 1) & hash]) != null) {
+        if (first.hash == hash && // always check first node
+            // equals判断相等
+            ((k = first.key) == key || (key != null && key.equals(k))))
+            return first;
+        if ((e = first.next) != null) {
+            if (first instanceof TreeNode)
+                return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+            do {
+                if (e.hash == hash &&
+                    ((k = e.key) == key || (key != null && key.equals(k))))
+                    return e;
+            } while ((e = e.next) != null);
+        }
+    }
+    return null;
+}
+```

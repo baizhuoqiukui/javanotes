@@ -18,11 +18,18 @@ Spring 中有许多bean通过xml文件进行配置 new ClassPathXmlApplicationCo
 
 在启动Spring MVC时需要把Spring容器先启动起来
 
+**启动顺序**
+
+1. 启动tomcat
+2. 加载web.xml，其中会加载Spring容器所需要的配置文件和Spring MVC所需要的配置文件
+3. 启动Spring容器，Spring容器中的bean对象提前创建好
+4. 启动Spring MVC对应的容器
+
 ![image-20211210092929263](SpringMVC源码.assets/image-20211210092929263.png)
 
 ![image-20211215145354531](SpringMVC源码.assets/image-20211215145354531.png)
 
-Spring MVC的本质就是Servlet，Servlet的init方法读取配置文件 
+Spring MVC的本质就是Servlet，**Servlet的init方法读取配置文件** 
 
 **web.xml**
 
@@ -61,15 +68,21 @@ Spring MVC的本质就是Servlet，Servlet的init方法读取配置文件
 
 ## 启动Spring容器
 
+第一次启动会跳转到监听器类
+
+![image-20220322212855295](SpringMVC源码.assets/image-20220322212855295.png)
+
 **ContextLoaderListener**
 
 ```java
+public class ContextLoaderListener extends ContextLoader implements ServletContextListener {
+
 /**
  * Initialize the root web application context.
  */
 @Override
 public void contextInitialized(ServletContextEvent event) {
-   initWebApplicationContext(event.getServletContext());
+   initWebApplicationContext(event.getServletContext());// ->
 }
 
 
@@ -139,7 +152,7 @@ public WebApplicationContext initWebApplicationContext(ServletContext servletCon
 
 ```java
 protected WebApplicationContext createWebApplicationContext(ServletContext sc) {
-   // 获取contextClass的Class对象
+   // 获取contextClass的Class对象，创建上下文的基本类，默认是XmlWebApplicationContext
    Class<?> contextClass = determineContextClass(sc);
    // 如果是自定义的contextClass对象，那么必须要实现，ConfigurableWebApplicationContext接口，否则无法直接运行
    if (!ConfigurableWebApplicationContext.class.isAssignableFrom(contextClass)) {
@@ -373,7 +386,19 @@ public void multicastEvent(final ApplicationEvent event, @Nullable ResolvableTyp
 }
 ```
 
+---
+
+后续进入了tomcat的方法，略过
+
 ## 启动Spring MVC容器
+
+**Servlet**
+
+init方法：生命周期方法:当Servlet第一次被创建对象时执行该方法,该方法在整个生命周期中只执行一次
+
+service方法：生命周期方法:对客户端响应的方法,该方法会被执行多次，每次请求该servlet都会执行该方法
+
+destroy方法：生命周期方法:当Servlet被销毁时执行该方法
 
 ### DispatcherServlet
 

@@ -530,9 +530,13 @@ SELECT event_id,event_name,source,timer_wait,object_name,index_name,operation,ne
 
 ​				![image-20210102102140858](optimizeMySQL.assets/image-20210102102140858.png)
 
+
+
+​				
+
 ​				反范式
 
-​				![image-20210102102339339](optimizeMySQL.assets/image-20210102102339339.png)
+![image-20210102102339339](optimizeMySQL.assets/image-20210102102339339.png)
 
 
 
@@ -562,9 +566,11 @@ SELECT event_id,event_name,source,timer_wait,object_name,index_name,operation,ne
 
 ## 存储引擎的选择
 
-​		![image-20210102104925955](optimizeMySQL.assets/image-20210102104925955.png)
+![image-20210102104925955](optimizeMySQL.assets/image-20210102104925955.png) 
 
-## 
+
+
+
 
 ## 适当的数据冗余
 
@@ -577,6 +583,8 @@ SELECT event_id,event_name,source,timer_wait,object_name,index_name,operation,ne
 ## 适当拆分
 
 ​		![image-20210102105704068](optimizeMySQL.assets/image-20210102105704068.png)			
+
+
 
 # mysql执行计划
 
@@ -807,9 +815,16 @@ explain select * from emp where empno = 7469;
 
 ### 					红黑树
 
-​					最长子树不超过最短子树的两倍，平衡二叉树的变种
+​					最长子树不超过最短子树的两倍，平衡二叉树的变种，
 
-### 					B树							
+1、红黑树放弃了追求完全平衡，追求大致平衡，在与平衡二叉树的时间复杂度相差不大的情况下，保证每次插入最多只需要三次旋转就能达到平衡，实现起来也更为简单。 
+2、平衡二叉树追求绝对平衡，条件比较苛刻，实现起来比较麻烦，每次插入新节点之后需要旋转的次数不能预知。
+
+### 					B树	
+
+**上边都是内存中，下边基于磁盘**					
+
+mysql基于磁盘，大数据量，索引也会很大，不能都放内存里呀	
 
 ![image-20210103104240996](optimizeMySQL.assets/image-20210103104240996.png)
 
@@ -817,11 +832,17 @@ explain select * from emp where empno = 7469;
 
 ​			在B树的基础上，非叶子节点不再存储数据，只存储指针，这样上层就能存更多的指针（key），减少树的高度，减少IO次数，空间没变化省的是时间 
 
-​			从根节点查是随机查找，从叶子节点查是范围查找
+​			从根节点查是随机查找，从叶子节点查是范围查找，先随机到叶子结点，再范围查找
+
+比如分页，先从根结点找到第2页的叶子几点，此时就可以通过链表找到第5页的数据
 
 ![image-20210103104547320](optimizeMySQL.assets/image-20210103104547320.png)
 
 ​	![image-20210117222454218](optimizeMySQL.assets/image-20210117222454218.png)
+
+
+
+
 
 聚簇：索引文件和数据文件是否放在一起
 
@@ -879,9 +900,15 @@ explain select * from emp where empno = 7469;
 
 ​		最左匹配 组合索引中如果只有右边的列没有左边的列则不能匹配，如果只有左边可以匹配
 
-​		索引下堆 组合索引中(name,age)，在**存储引擎层**，(先匹配name)回表（主键B+树）之前 把age过滤了（age=xxoo ）
+​		索引下推 5.6后的innodb中 组合索引中(name,age)，在**存储引擎层**，(先匹配name，name是范围匹配)回表（主键B+树）之前 把age过滤了（age=xxoo ）
 
-​		不是写了索引 SQL一定会用到
+```sql
+　　SELECT * from user where  name like '陈%' and age=20
+```
+
+​	在回表之前在二级索引中就过滤了age= 20的条件	
+
+不是写了索引 SQL一定会用到
 
 ## 索引匹配方式
 
@@ -1380,9 +1407,13 @@ join的实现方式原理
 
 不使用索引
 
+---
+
 ![image-20210127165946804](optimizeMySQL.assets/image-20210127165946804.png)
 
 使用索引
+
+---
 
 ![image-20210127165951875](optimizeMySQL.assets/image-20210127165951875.png)
 
@@ -2335,6 +2366,8 @@ SQL 标准定义了四个隔离级别：
 
 ![image-20210313220450629](optimizeMySQL.assets/2.png)
 
+
+
 ​		3、假设有第三个事务编号为3对该记录的age做了修改，改为32
 
 ​		在事务3修改该行数据的时，数据库会对该行加排他锁
@@ -2371,6 +2404,10 @@ SQL 标准定义了四个隔离级别：
 
 ​		具体的比较规则如下：
 
+最新提交的事务id DB_TRX_ID  
+
+
+
 ​		1、首先比较DB_TRX_ID < up_limit_id,如果小于，则当前事务能看到DB_TRX_ID所在的记录，如果大于等于进入下一个判断
 
 ​		2、接下来判断DB_TRX_ID >= low_limit_id,如果大于等于则代表DB_TRX_ID所在的记录在Read View生成后才出现的，那么对于当前事务肯定不可见，如果小于，则进入下一步判断
@@ -2402,7 +2439,11 @@ SQL 标准定义了四个隔离级别：
 
 
 
+
+
 ![image-20210227185820394](optimizeMySQL.assets/6.png)
+
+
 
 当上述的内容都看明白了的话，那么大家就应该能够搞清楚这几个核心概念之间的关系了，下面我们讲一个不同的隔离级别下的快照读的不同。
 

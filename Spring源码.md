@@ -2411,7 +2411,7 @@ protected Object createBean(String beanName, RootBeanDefinition mbd, @Nullable O
 
 		// Eagerly cache singletons to be able to resolve circular references 解决循环依赖
 		// even when triggered by lifecycle interfaces like BeanFactoryAware.
-        	// 判断bean是否需要被提前曝光： 单例 && 允许循环依赖 && 当前bean正在创建中
+        	// 判断bean是否需要被提前曝光： 单例 && 允许 && 当前bean正在创建中
 		boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&
 				isSingletonCurrentlyInCreation(beanName));
 		if (earlySingletonExposure) {
